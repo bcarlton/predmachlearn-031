@@ -1,0 +1,72 @@
+---
+title: "Predictive Machine Learning Course Project: Classifying Correct and Incorrect Biceps Curls from Inertial Measurement Unit data"
+author: "Brian Carlton"
+output: html_document
+---
+```{r setup, echo=FALSE,results='hide'}
+suppressWarnings(suppressPackageStartupMessages(library(knitr)))
+setwd("~/Desktop/predmachlearn-031/course_project/")
+load("summary_tables.RData")
+```
+
+The Predictive Machine Learning course offered by Johns Hopkins University/Coursera is a great introduction into the complicated and fascinating machine learning field.  This paper summarizes the investigation into the viability of applying different machine learning approaches to effectively predict the motion of biceps curls given data from Inertial Measurement Units(IMUs) on correct and multiple incorrect examples of the exercise.  The data set being used was collected by researchers in a 2013 published study by the University of Rio de Janeiro's Human Activity Research project, or HAR, investigating a similar concept, albeit in multiple directions and in much more detail.  The full article about their experiment can be found at this [link](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf) and is cited at the end of the paper.
+
+The HAR group captured motion data using 4 IMUs attached to a lifter's belt, arm, forearm and to a 3 lb. dumbbell itself (see Figure 1 for more detail). Then, under the observation of a weight-lifting coach, the subjects performed a biceps curl in 5 different ways: 1 correct way and 4 different incorrect ways.  Each of the lifts by each subject was captured by the IMUs, and all data was assembled into one single dataset. From this dataset, I applied multiple machine learning algorithms to see if I could classify each measurement as a correct lift or as one of the four incorrect lifts. Based on my results, a random forest approach provides the most accuracy given this dataset and should be used for any future classifications in this vein.
+
+Figure 1 
+Left: The IMU configuration
+
+Right: It looks like Mr. Schwarzenegger may have benefitted from my random forest model to help his form.  Or, perhaps he just needs to reduce the weight.
+![](/home/bc/Desktop/predmachlearn-031/course_project/sensor&arnold.jpg)
+
+
+###Data Acquisition and Cleanup
+
+The full dataset can be acquired [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv).  Import into the R environment shows that the set consists of just under twenty-thousand observations of one-hundred sixty variables.  The variables are summarized as follows: one outcome variable called "classe", eight bookkeeping variables (user name, timestamp data, windowing labels), forty-eight different raw data variables from the IMUs about euler angles, magnetometer, accelerometer and gyroscope data in each of the four IMUs, and then one-hundred and four summary statistics about the raw data (variances, standard deviations, etc.) on each IMU.
+
+The dataset is in no way clean upon import.  To prepare the data for the learning algorithms, I removed the bookkeeping variables first.  Then, naturally, I checked for missing data. Most of the summary statistics contained missing information.  These statistics are calculated via a sliding window approach, hence the need for the two windowing labels variables, "\num_window" and "\new_window".  However, information concerning the details of the sliding windows is not clearly documented, so instead of risking an incorrect mapping of the summary statistics to respective windows, I chose to eliminate those incomplete summary statistics from the data set, eliminating over one-hundred variables in the process.
+
+From the remaining variables, I checked for near-zero variance data, correlated predictors and linear combinations in the observations.  None of the variables were near-zero variance, nor were any of the observations detected as linear combinations.  However, given that the raw IMU measurements were most likely used to calculate the raw Euler angles, some of the variables are probably correlated. So, at a correlation threshold of 0.8, there were a few correlated predictors that were also removed. After the cleaning, the data consisted of 19622 observations of only 40 variables, including the outcome variable.
+
+Applying Machine Learning Algorithms
+=====================================
+As this exercise attempts to identify different classes of performing biceps curls, I used algorithms that were designed mainly for classification purposes and avoided those which are more useful for regression.  Therefore, I avoided methods such as PCA and focused on tree methods (random forest, decision trees), discriminant analysis (linear and quadratic), and some naive bayes and boosting techniques.  These models were developed on a training set, which was a random sample of 60% of the cleaned data.  The remaining 40% of the dataset was used to create a testing set to get an appropriate out-of-sample accuracy estimate.  10-fold cross validation was performed on each of the models in order to strike the right balance between bias and variance.  The data were centered and scaled, but the results in both the tree-based as well as the discriminant analysis based methods were not very different.  The table in Figure 2 shows the out-of-sample results, from which you can clearly determine that the random forest approach is the most effective.
+
+Figure 2: Out-of-sample summary.  The Upper and Lower Bounds represent the 95% accuracy confidence interval.
+```{r results_table,echo=FALSE}
+kable(results.table)
+```
+
+
+###Tweaking the Random Forest
+The Random Forest machine learning algorithm is highly effective and, naturally, has a reputation for being one of the most effective learning approaches with very little adjusting needed.  The fact that it randomly samples predictors at each split avoids the problem of highly correlated trees that may occur with strong predictors in a bagging approach.  However, this effectiveness comes at the cost of interpretability and simplicity.  These factors are important, so I attempted to take Occam's Razor to this model, if you will, to see if I could not simplify the model using only the most important predictors.  From the random forest with all predictors, I calculated variable importance from the Gini index, and tried to develop models using smaller subsets of those variables.  Using the top five and ten variables did not yield enough variability for the random forest approach to be generated, but using the top 15 did.  Furthermore, reducing to only 15 predictor variables allowed for a smaller model without sacrificing much accuracy. Here are the accuracy comparisons as well as the importance plots for the original model and the reduced model.
+
+Figure 3: Comparison of Accuracy between Random Forest Models
+```{r rf_comparison, echo=FALSE}
+kable(rf.table)
+```
+
+Figure 4: Importance Plots for each Random Forest Model
+![](/home/bc/Desktop/predmachlearn-031/course_project/rf_all_importance_plot.png)
+
+![](/home/bc/Desktop/predmachlearn-031/course_project/rf_top15_importance_plot.png)
+
+The difference in accuracies is extremely small, meriting the use of the Top 15 model over the full prediction model to save computational cost. Concerning importance, the "yaw belt" category remained at the top of the importance list in both models, and two of the magnetometer readings on the dumbbell remained highly important as well, while the "pitch forearm" category dropped slightly. This information may be useful in moving toward a less complicated approach using fewer sensors.
+
+###Caveats and Moving Forward
+There are a few topics for future analysis.
+
+* Original dataset sampling windows:  it is bothersome to dismiss the approach that the original researchers took in applying a machine learning algorithm.  From each of the raw data snapshots from the IMUs, summary statistics were calculated, and then the researchers used a [correlated feature selection algorithm](http://www.cs.waikato.ac.nz/~mhall/thesis.pdf) to select 18 of these statistics on which to make a random forest model.  This is in direct contradiction to the methods I used, in which most of the model is based on the combinations of raw data measurements.  It is very natural to suggest examining models based on combinations of raw data and summary statistics and not just one set or the other, while using different feature selection approaches.
+
+* Modeling on single IMU measurements: It would be interesting to see how well a single IMU can predict the class of biceps curl.  It is unlikely that any automated system that would identify errors in lifting technique might be constrained to a single device, such as a smartphone.  Thus, being able to predict on a single location is much more feasible for realizing a practical, machine assisted coach, and so the potential of light resource machine learning algorithms should be investigated. Using different models such as in the case of the random forests could point to a best use location, such as on a smartphone on a belt or a small sensor on a dumbbell directly.
+
+###Citations and Thanks
+
+For the entire work done by the University of Rio de Janeiro's HAR team, please consult the following citation:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+The paper can be found directly at this link: http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf
+
+All files and R objects associated with this project can be found at my GitHub repository:
+https://github.com/bcarlton/predmachlearn-031.git
